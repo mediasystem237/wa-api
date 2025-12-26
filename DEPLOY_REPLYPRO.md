@@ -17,9 +17,21 @@ mkdir -p /opt/whatsapp-api
 cd /opt/whatsapp-api
 ```
 
-### 2. Transférer les fichiers depuis Windows
+### 2. Cloner ou transférer les fichiers
 
-**Option A: Avec rsync (recommandé - exclut automatiquement archive/)**
+**Option A: Cloner depuis GitHub (recommandé si le repo est public)**
+
+```bash
+# Sur le VPS
+cd /opt
+git clone https://github.com/mediasystem237/wa-api.git whatsapp-api
+cd whatsapp-api
+
+# Si le repo est privé, utilisez un token GitHub:
+# git clone https://VOTRE_TOKEN@github.com/mediasystem237/wa-api.git whatsapp-api
+```
+
+**Option B: Transférer depuis Windows avec rsync (exclut automatiquement archive/)**
 
 ```powershell
 # Depuis PowerShell ou Git Bash sur Windows

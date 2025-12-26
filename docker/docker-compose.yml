@@ -1,9 +1,7 @@
-version: '3.8'
-
 services:
   api:
     build:
-      context: ../..
+      context: .
       dockerfile: docker/Dockerfile
     ports:
       - "3000:3000"
@@ -13,6 +11,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
+    env_file:
+      - .env
     environment:
       - NODE_ENV=production
       - DB_HOST=postgres
@@ -34,8 +34,8 @@ services:
       - MAX_RECONNECTION_ATTEMPTS=${MAX_RECONNECTION_ATTEMPTS:-3}
       - API_DOMAIN=${API_DOMAIN:-api-wa.replypro.cm}
     volumes:
-      - ../../sessions:/app/sessions
-      - ../../logs:/app/logs
+      - ./sessions:/app/sessions
+      - ./logs:/app/logs
     depends_on:
       - postgres
       - redis
@@ -80,4 +80,3 @@ volumes:
 networks:
   whatsapp-network:
     driver: bridge
-

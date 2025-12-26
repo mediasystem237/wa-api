@@ -7,6 +7,7 @@ RUN apk add --no-cache \
     python3 \
     make \
     g++ \
+    git \
     cairo-dev \
     jpeg-dev \
     pango-dev \
@@ -17,7 +18,7 @@ RUN apk add --no-cache \
 COPY package*.json ./
 
 # Installer les dépendances
-RUN npm ci --only=production
+RUN npm install --omit=dev
 
 # Copier le code source
 COPY . .
