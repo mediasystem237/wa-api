@@ -1,4 +1,20 @@
 services:
+  # --- Nginx Proxy Manager ---
+  npm:
+    image: 'jc21/nginx-proxy-manager:latest'
+    container_name: nginx-proxy-manager
+    restart: unless-stopped
+    ports:
+      - "80:80"   # HTTP public
+      - "81:81"   # Interface d'administration
+      - "443:443" # HTTPS public
+    volumes:
+      - ./npm_data:/data
+      - ./npm_letsencrypt:/etc/letsencrypt
+    networks:
+      - whatsapp-network
+
+  # --- Votre API ---
   api:
     build:
       context: .
@@ -43,6 +59,7 @@ services:
     networks:
       - whatsapp-network
 
+  # --- Base de données ---
   postgres:
     image: postgres:15-alpine
     environment:
@@ -60,6 +77,7 @@ services:
       timeout: 5s
       retries: 5
 
+  # --- Cache ---
   redis:
     image: redis:7-alpine
     volumes:

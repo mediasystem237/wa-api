@@ -117,30 +117,43 @@ docker-compose -f docker/docker-compose.yml exec -T api npm run migrate
 curl http://localhost:3000/health
 ```
 
-### 5. Configuration Nginx
+### 5. Installation de Nginx Proxy Manager (Recommandé) ⚡
 
-**Option A: Accès via IP (Port 81) - Recommandé pour commencer**
+**Nginx Proxy Manager** est une interface web graphique pour gérer facilement vos reverse proxies, certificats SSL, et domaines.
+
+**Installation automatique en une commande:**
 
 ```bash
-# Copier la configuration Nginx pour accès IP
-sudo cp docker/nginx/nginx-ip-access.conf /etc/nginx/sites-available/api-ip-access
-
-# Activer le site
-sudo ln -s /etc/nginx/sites-available/api-ip-access /etc/nginx/sites-enabled/
-
-# Ouvrir le port 81 dans le firewall
-sudo ufw allow 81/tcp
-
-# Tester la configuration
-sudo nginx -t
-
-# Recharger Nginx
-sudo systemctl reload nginx
-
-# Tester l'accès
-curl http://81.17.96.129:81/health
-# OU depuis votre navigateur: http://81.17.96.129:81/health
+cd /opt/whatsapp-api
+chmod +x scripts/install-nginx-proxy-manager.sh
+sudo ./scripts/install-nginx-proxy-manager.sh
 ```
+
+Le script installe automatiquement:
+- ✅ Docker et Docker Compose (si nécessaire)
+- ✅ Nginx Proxy Manager dans un conteneur
+- ✅ Configuration des ports (80, 81, 443)
+- ✅ Firewall (ports 80, 81, 443)
+
+**Accès à l'interface:**
+- URL: `http://81.17.96.129:81`
+- Email: `admin@example.com`
+- Password: `changeme`
+
+⚠️ **Changez ces identifiants dès la première connexion!**
+
+**Configuration dans NPM:**
+1. Connectez-vous à l'interface
+2. Allez dans "Proxy Hosts" > "Add Proxy Host"
+3. Configurez:
+   - **Domain Names**: `api-wa.replypro.cm` (ou votre domaine)
+   - **Forward Hostname/IP**: `whatsapp-api-api-1` (nom du conteneur Docker)
+   - **Forward Port**: `3000`
+   - **SSL**: Activez et obtenez un certificat Let's Encrypt automatiquement
+
+**Alternative: Installation manuelle**
+
+Si vous préférez installer manuellement, voir la section ci-dessous.
 
 **Option B: Accès via domaine avec SSL (api-wa.replypro.cm)**
 
