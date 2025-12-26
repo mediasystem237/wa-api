@@ -27,6 +27,19 @@ app.use(requestIdMiddleware); // Générer request_id pour chaque requête
 app.use(helmet());
 app.use(compression());
 
+// Health check (avant CORS pour être accessible sans restrictions)
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    version: '1.0.0',
+    uptime: Math.floor(process.uptime()),
+    connections: {
+      active: whatsappService.connections.size,
+      total: whatsappService.connections.size
+    }
+  });
+});
+
 // CORS configuré (pas de wildcard en prod)
 const corsOptions = {
   origin: function (origin, callback) {
@@ -97,19 +110,7 @@ const swaggerOptions = {
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    version: '1.0.0',
-    uptime: Math.floor(process.uptime()),
-    connections: {
-      active: whatsappService.connections.size,
-      total: whatsappService.connections.size
-    },
-    timestamp: new Date().toISOString()
-  });
-});
+// Health check déjà défini avant CORS (ligne 30)
 
 // API Routes (uniformisées)
 app.use('/api/v1/instances', instanceRoutes);
