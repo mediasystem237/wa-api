@@ -80,6 +80,10 @@ docker-compose -f docker/docker-compose.yml exec api npm run migrate
 
 Voir [DEPLOYMENT.md](DEPLOYMENT.md) pour le guide complet de déploiement production.
 
+**Déploiement sur Contabo VPS:** Consultez [DEPLOY_CONTABO.md](DEPLOY_CONTABO.md) pour un guide spécifique avec nettoyage automatique de l'environnement existant.
+
+**Configuration pour ReplyPro:** Si votre backend est sur `replypro.cm` et votre API sur `api-wa.replypro.cm`, consultez [DEPLOY_REPLYPRO.md](DEPLOY_REPLYPRO.md) pour une configuration prête à l'emploi.
+
 ## 📚 Documentation API
 
 Une fois l'application démarrée, accédez à la documentation Swagger:

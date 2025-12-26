@@ -1,0 +1,23 @@
+# Dossiers à exclure lors du transfert
+archive/
+node_modules/
+.git/
+sessions/
+logs/
+.env
+.env.*
+*.log
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+coverage/
+.nyc_output/
+dist/
+build/
+tmp/
+temp/
+*.tmp
+

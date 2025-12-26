@@ -36,7 +36,6 @@ docker-compose.override.yml
 # Build
 dist/
 build/
-archive/
 
 # Tests
 coverage/
@@ -47,8 +46,6 @@ tmp/
 temp/
 *.tmp
 
-DCD_FONCTIONNEL.md
-DEPLOYMENT_CONTABO.md
-
+archive/
 
 
