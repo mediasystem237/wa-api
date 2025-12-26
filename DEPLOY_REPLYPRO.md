@@ -119,8 +119,33 @@ curl http://localhost:3000/health
 
 ### 5. Configuration Nginx
 
+**Option A: Accès via IP (Port 81) - Recommandé pour commencer**
+
 ```bash
-# Copier la configuration Nginx
+# Copier la configuration Nginx pour accès IP
+sudo cp docker/nginx/nginx-ip-access.conf /etc/nginx/sites-available/api-ip-access
+
+# Activer le site
+sudo ln -s /etc/nginx/sites-available/api-ip-access /etc/nginx/sites-enabled/
+
+# Ouvrir le port 81 dans le firewall
+sudo ufw allow 81/tcp
+
+# Tester la configuration
+sudo nginx -t
+
+# Recharger Nginx
+sudo systemctl reload nginx
+
+# Tester l'accès
+curl http://81.17.96.129:81/health
+# OU depuis votre navigateur: http://81.17.96.129:81/health
+```
+
+**Option B: Accès via domaine avec SSL (api-wa.replypro.cm)**
+
+```bash
+# Copier la configuration Nginx pour le domaine
 sudo cp docker/nginx/nginx-contabo.conf /etc/nginx/sites-available/api-wa.replypro.cm
 
 # Activer le site
@@ -134,6 +159,9 @@ sudo nginx -t
 
 # Recharger Nginx
 sudo systemctl reload nginx
+
+# Obtenir le certificat SSL
+sudo certbot --nginx -d api-wa.replypro.cm
 ```
 
 ### 6. Obtenir le certificat SSL
