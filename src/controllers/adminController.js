@@ -152,6 +152,9 @@ class AdminController {
       // Dead-letters (webhooks en échec après tous les retries)
       const deadLetters = await WebhookLog.getFailedWebhooks(instance.id, 50);
       
+      const formattedLogs = this.formatWebhookLogs(logs);
+      const formattedDeadLetters = this.formatDeadLetters(deadLetters);
+      
       res.json({
         instance: {
           id: instance.id,
@@ -162,26 +165,8 @@ class AdminController {
           ...stats,
           byEvent: statsByEvent
         },
-        logs: logs.map(log => ({
-          timestamp: log.created_at,
-          deliveryId: log.delivery_id,
-          level: log.error ? 'error' : 'success',
-          event: log.event_type,
-          meta: {
-            statusCode: log.status_code,
-            responseTime: log.response_time_ms,
-            error: log.error,
-            retryCount: log.retry_count
-          }
-        })),
-        deadLetters: deadLetters.map(log => ({
-          timestamp: log.created_at,
-          deliveryId: log.delivery_id,
-          event: log.event_type,
-          error: log.error,
-          statusCode: log.status_code,
-          retryCount: log.retry_count
-        })),
+        logs: formattedLogs,
+        deadLetters: formattedDeadLetters,
         period: `${hours} hours`
       });
     } catch (error) {
@@ -189,6 +174,38 @@ class AdminController {
     }
   }
   
+  /**
+   * Formate les logs webhooks pour la réponse
+   */
+  static formatWebhookLogs(logs) {
+    return logs.map(log => ({
+      timestamp: log.created_at,
+      deliveryId: log.delivery_id,
+      level: log.error ? 'error' : 'success',
+      event: log.event_type,
+      meta: {
+        statusCode: log.status_code,
+        responseTime: log.response_time_ms,
+        error: log.error,
+        retryCount: log.retry_count
+      }
+    }));
+  }
+
+  /**
+   * Formate les dead-letters pour la réponse
+   */
+  static formatDeadLetters(deadLetters) {
+    return deadLetters.map(log => ({
+      timestamp: log.created_at,
+      deliveryId: log.delivery_id,
+      event: log.event_type,
+      error: log.error,
+      statusCode: log.status_code,
+      retryCount: log.retry_count
+    }));
+  }
+
   static async cleanup(req, res, next) {
     try {
       const fs = require('fs').promises;
@@ -226,7 +243,8 @@ class AdminController {
           }
         }
       } catch (error) {
-        // Dossier sessions n'existe pas encore
+        // Dossier sessions n'existe pas encore (première exécution)
+        logger.debug('Sessions directory does not exist yet:', error.message);
       }
       
       res.json({

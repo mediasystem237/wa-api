@@ -47,21 +47,21 @@ const corsOptions = {
     if (!origin) {
       return callback(null, true);
     }
-    
+
     // En développement, autoriser toutes les origines
     if (config.nodeEnv === 'development') {
       return callback(null, true);
     }
-    
+
     // En production, construire la liste des origines autorisées
     const apiDomain = `https://${config.domain}`;
     const allowedOrigins = process.env.CORS_ORIGINS 
       ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
       : [];
-    
+
     // Toujours autoriser le domaine de l'API lui-même
     const allAllowedOrigins = [apiDomain, ...allowedOrigins];
-    
+
     // Vérifier si l'origin est autorisé
     if (allAllowedOrigins.includes(origin)) {
       callback(null, true);
@@ -179,28 +179,35 @@ app.use(errorHandler);
 const server = app.listen(config.port, async () => {
   logger.info(`🚀 WhatsApp API started on port ${config.port}`);
   logger.info(`📚 API Documentation: http://localhost:${config.port}/api-docs`);
-  
-  // Reconnecter les instances actives au démarrage
+
+  // Reconnecter les instances actives au démarrage (en parallèle pour améliorer les performances)
   try {
     const instances = await Instance.findAll({ status: 'connected' });
-    
-    for (const instance of instances) {
+
+    // Utiliser Promise.allSettled pour exécuter les reconnexions en parallèle
+    const reconnectPromises = instances.map(async (instance) => {
       try {
-        await whatsappService.connect(
-          instance.id,
-          instance.instance_name,
-          instance.webhook_url,
-          instance.api_key,
-          instance.webhook_events,
-          instance.webhook_secret
-        );
+        await whatsappService.connect({
+          instanceId: instance.id,
+          instanceName: instance.instance_name,
+          webhookUrl: instance.webhook_url,
+          apiKey: instance.api_key,
+          webhookEvents: instance.webhook_events,
+          webhookSecret: instance.webhook_secret
+        });
         logger.info(`Reconnected instance: ${instance.instance_name}`);
+        return { instance: instance.instance_name, success: true };
       } catch (error) {
         logger.error(`Failed to reconnect instance ${instance.instance_name}:`, error);
         // Mettre à jour le statut en cas d'échec
         await Instance.update(instance.id, { status: 'disconnected' });
+        return { instance: instance.instance_name, success: false, error };
       }
-    }
+    });
+
+    const results = await Promise.allSettled(reconnectPromises);
+    const successful = results.filter(r => r.status === 'fulfilled' && r.value.success).length;
+    logger.info(`Reconnection completed: ${successful}/${instances.length} instances reconnected`);
   } catch (error) {
     logger.error('Error reconnecting instances:', error);
   }
@@ -209,7 +216,7 @@ const server = app.listen(config.port, async () => {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   logger.info('SIGTERM received, shutting down gracefully...');
-  
+
   // Déconnecter toutes les connexions
   for (const [name, connection] of whatsappService.connections) {
     try {
@@ -220,7 +227,7 @@ process.on('SIGTERM', async () => {
       logger.error(`Error disconnecting ${name}:`, error);
     }
   }
-  
+
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);
@@ -229,7 +236,7 @@ process.on('SIGTERM', async () => {
 
 process.on('SIGINT', async () => {
   logger.info('SIGINT received, shutting down gracefully...');
-  
+
   for (const [name, connection] of whatsappService.connections) {
     try {
       if (connection.sock) {
@@ -239,7 +246,7 @@ process.on('SIGINT', async () => {
       logger.error(`Error disconnecting ${name}:`, error);
     }
   }
-  
+
   server.close(() => {
     logger.info('Server closed');
     process.exit(0);

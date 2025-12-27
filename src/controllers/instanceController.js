@@ -2,8 +2,61 @@ const Instance = require('../models/Instance');
 const ApiKeyService = require('../services/ApiKeyService');
 const whatsappService = require('../services/WhatsAppService');
 const logger = require('../utils/logger');
+const ErrorFormatter = require('../utils/errorFormatter');
 
 class InstanceController {
+  /**
+   * Résout l'instance à partir de la requête (ID dans params ou instance authentifiée)
+   */
+  static async resolveInstance(req) {
+    const instanceId = req.params.id ? parseInt(req.params.id, 10) : null;
+    
+    if (instanceId && req.instance && req.instance.id !== instanceId) {
+      const instance = await Instance.findById(instanceId);
+      if (!instance) {
+        return null;
+      }
+      return instance;
+    }
+    
+    return req.instance;
+  }
+
+  /**
+   * Crée une réponse d'erreur 404 pour instance non trouvée
+   */
+  static createNotFoundResponse(req, res) {
+    return res.status(404).json(
+      ErrorFormatter.format({
+        code: ErrorFormatter.codes.INSTANCE_NOT_FOUND,
+        message: 'Instance not found',
+        status: 404
+      }, req)
+    );
+  }
+
+  /**
+   * Formate la réponse de statut d'instance
+   */
+  static formatStatusResponse(dbInstance, instanceName, connectionStatus) {
+    let uptime = null;
+    if (dbInstance.connected_at) {
+      uptime = Math.floor((Date.now() - new Date(dbInstance.connected_at).getTime()) / 1000);
+    }
+
+    return {
+      instance: instanceName,
+      status: connectionStatus.status || dbInstance.status,
+      connected: connectionStatus.connected || dbInstance.status === 'connected',
+      phoneNumber: dbInstance.phone_number,
+      phoneName: dbInstance.phone_name,
+      qrCode: dbInstance.status === 'qr_ready' ? dbInstance.qr_code : null,
+      connectedAt: dbInstance.connected_at,
+      lastDisconnectReason: dbInstance.disconnect_reason,
+      createdAt: dbInstance.created_at,
+      uptime
+    };
+  }
   /**
    * Crée une nouvelle instance
    */
@@ -73,14 +126,14 @@ class InstanceController {
       }
       
       // Connecter
-      const { status, connection } = await whatsappService.connect(
-        id,
-        instance_name,
-        webhook_url,
-        api_key,
-        webhook_events,
-        webhook_secret
-      );
+      const { status, connection } = await whatsappService.connect({
+        instanceId: id,
+        instanceName: instance_name,
+        webhookUrl: webhook_url,
+        apiKey: api_key,
+        webhookEvents: webhook_events,
+        webhookSecret: webhook_secret
+      });
       
       // Attendre le QR code si nécessaire
       let qrCode = null;
@@ -119,63 +172,21 @@ class InstanceController {
    */
   static async getStatus(req, res, next) {
     try {
-      // Support des routes avec ID dans l'URL
-      const instanceId = req.params.id ? parseInt(req.params.id, 10) : null;
-      let instance;
-      
-      if (instanceId && req.instance && req.instance.id !== instanceId) {
-        // Si un ID est fourni et différent de l'instance authentifiée, chercher par ID
-        instance = await Instance.findById(instanceId);
-        const ErrorFormatter = require('../utils/errorFormatter');
-        if (!instance) {
-          return res.status(404).json(
-            ErrorFormatter.format({
-              code: ErrorFormatter.codes.INSTANCE_NOT_FOUND,
-              message: 'Instance not found',
-              status: 404
-            }, req)
-          );
-        }
-      } else {
-        instance = req.instance;
+      const instance = await this.resolveInstance(req);
+      if (!instance) {
+        return this.createNotFoundResponse(req, res);
       }
       
       const { id, instance_name } = instance;
-      
-      // Récupérer depuis la BDD
       const dbInstance = await Instance.findById(id);
-      const ErrorFormatter = require('../utils/errorFormatter');
       if (!dbInstance) {
-        return res.status(404).json(
-          ErrorFormatter.format({
-            code: ErrorFormatter.codes.INSTANCE_NOT_FOUND,
-            message: 'Instance not found',
-            status: 404
-          }, req)
-        );
+        return this.createNotFoundResponse(req, res);
       }
       
-      // Récupérer le statut de la connexion
       const connectionStatus = whatsappService.getStatus(instance_name);
+      const response = this.formatStatusResponse(dbInstance, instance_name, connectionStatus);
       
-      // Calculer l'uptime
-      let uptime = null;
-      if (dbInstance.connected_at) {
-        uptime = Math.floor((Date.now() - new Date(dbInstance.connected_at).getTime()) / 1000);
-      }
-      
-      res.json({
-        instance: instance_name,
-        status: connectionStatus.status || dbInstance.status,
-        connected: connectionStatus.connected || dbInstance.status === 'connected',
-        phoneNumber: dbInstance.phone_number,
-        phoneName: dbInstance.phone_name,
-        qrCode: dbInstance.status === 'qr_ready' ? dbInstance.qr_code : null,
-        connectedAt: dbInstance.connected_at,
-        lastDisconnectReason: dbInstance.disconnect_reason,
-        createdAt: dbInstance.created_at,
-        uptime
-      });
+      res.json(response);
     } catch (error) {
       next(error);
     }
@@ -267,7 +278,8 @@ class InstanceController {
       try {
         await whatsappService.disconnect(instance_name);
       } catch (error) {
-        // Ignorer les erreurs de déconnexion
+        // Ignorer les erreurs de déconnexion (l'instance sera supprimée de toute façon)
+        logger.debug(`Could not disconnect instance ${instance_name} before deletion:`, error.message);
       }
       
       // Supprimer de la BDD

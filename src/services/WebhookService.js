@@ -1,5 +1,5 @@
+const crypto = require('crypto');
 const axios = require('axios');
-const { v4: uuidv4 } = require('uuid');
 const WebhookLog = require('../models/WebhookLog');
 const WebhookSignatureService = require('./WebhookSignatureService');
 const config = require('../config/env');
@@ -8,8 +8,15 @@ const logger = require('../utils/logger');
 class WebhookService {
   /**
    * Envoie un webhook avec retry et signature HMAC
+   * @param {Object} config - Configuration du webhook
+   * @param {number} config.instanceId - ID de l'instance
+   * @param {string} config.webhookUrl - URL du webhook
+   * @param {string} config.event - Type d'événement
+   * @param {Object} config.data - Données à envoyer
+   * @param {Array<string>} [config.webhookEvents=[]] - Liste des événements autorisés
+   * @param {string} [config.webhookSecret=null] - Secret pour la signature HMAC
    */
-  static async send(instanceId, webhookUrl, event, data, webhookEvents = [], webhookSecret = null) {
+  static async send({ instanceId, webhookUrl, event, data, webhookEvents = [], webhookSecret = null }) {
     // Vérifier si l'événement est dans la liste des événements autorisés
     if (webhookEvents.length > 0 && !webhookEvents.includes(event)) {
       logger.debug(`Event ${event} not in webhook events list, skipping`);
@@ -22,7 +29,7 @@ class WebhookService {
     }
     
     const timestamp = Date.now();
-    const deliveryId = uuidv4();
+    const deliveryId = crypto.randomUUID();
     
     const payload = {
       event,
@@ -46,26 +53,67 @@ class WebhookService {
       Object.assign(headers, signatureHeaders);
     }
     
+    // Retry logic
+    const retryResult = await this.executeWebhookRequest({
+      webhookUrl,
+      payload,
+      headers,
+      instanceId,
+      event,
+      deliveryId
+    });
+    
+    if (retryResult.success) {
+      return retryResult;
+    }
+    
+    // Tous les essais ont échoué - marquer comme dead-letter
+    const finalRetryCount = config.webhooks.retryAttempts;
+    await this.logFailedWebhook({
+      instanceId,
+      event,
+      payload,
+      statusCode: retryResult.statusCode,
+      responseTime: retryResult.responseTime,
+      error: retryResult.error,
+      retryCount: finalRetryCount,
+      deliveryId
+    });
+    
+    logger.error(`Webhook failed after ${finalRetryCount} attempts (dead-letter): ${event} to ${webhookUrl} (deliveryId: ${deliveryId})`);
+    
+    return { 
+      success: false, 
+      error: retryResult.error, 
+      deliveryId,
+      deadLetter: true,
+      retryCount: finalRetryCount
+    };
+  }
+
+  /**
+   * Exécute une requête webhook avec retry
+   */
+  static async executeWebhookRequest({ webhookUrl, payload, headers, instanceId, event, deliveryId }) {
     let lastError = null;
     let lastStatusCode = null;
     let responseTime = null;
+    const envConfig = require('../config/env');
     
-    // Retry logic
-    for (let attempt = 1; attempt <= config.webhooks.retryAttempts; attempt++) {
+    for (let attempt = 1; attempt <= envConfig.webhooks.retryAttempts; attempt++) {
       const startTime = Date.now();
       
       try {
         const response = await axios.post(webhookUrl, payload, {
           headers,
-          timeout: config.webhooks.timeout,
-          validateStatus: () => true // Accepter tous les codes de statut
+          timeout: envConfig.webhooks.timeout,
+          validateStatus: () => true
         });
         
         responseTime = Date.now() - startTime;
         lastStatusCode = response.status;
         
         if (response.status >= 200 && response.status < 300) {
-          // Succès
           await WebhookLog.create({
             instanceId,
             eventType: event,
@@ -92,46 +140,37 @@ class WebhookService {
         logger.warn(`Webhook attempt ${attempt} failed: ${error.message}`);
       }
       
-      // Attendre avant le prochain essai (backoff exponentiel)
-      if (attempt < config.webhooks.retryAttempts) {
-        const delay = config.webhooks.retryDelay * Math.pow(2, attempt - 1);
+      if (attempt < envConfig.webhooks.retryAttempts) {
+        const delay = envConfig.webhooks.retryDelay * Math.pow(2, attempt - 1);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
-    // Tous les essais ont échoué - marquer comme dead-letter
-    const finalRetryCount = config.webhooks.retryAttempts;
+    return { success: false, error: lastError, statusCode: lastStatusCode, responseTime };
+  }
+
+  /**
+   * Log un webhook en échec
+   */
+  static async logFailedWebhook({ instanceId, event, payload, statusCode, responseTime, error, retryCount, deliveryId }) {
     await WebhookLog.create({
       instanceId,
       eventType: event,
       payload,
-      statusCode: lastStatusCode,
+      statusCode,
       responseTimeMs: responseTime,
-      error: lastError,
-      retryCount: finalRetryCount,
+      error,
+      retryCount,
       deliveryId
     });
-    
-    logger.error(`Webhook failed after ${finalRetryCount} attempts (dead-letter): ${event} to ${webhookUrl} (deliveryId: ${deliveryId})`);
-    
-    // Optionnel: envoyer une alerte ou notification pour les dead-letters
-    // (peut être implémenté plus tard avec un système de notifications)
-    
-    return { 
-      success: false, 
-      error: lastError, 
-      deliveryId,
-      deadLetter: true,
-      retryCount: finalRetryCount
-    };
   }
   
   /**
    * Envoie un webhook de manière asynchrone (fire and forget)
    */
   static async sendAsync(instanceId, webhookUrl, event, data, webhookEvents = [], webhookSecret = null) {
-    // Ne pas attendre la réponse
-    this.send(instanceId, webhookUrl, event, data, webhookEvents, webhookSecret).catch(err => {
+    // Ne pas attendre la réponse - compatibilité avec l'ancienne API
+    this.send({ instanceId, webhookUrl, event, data, webhookEvents, webhookSecret }).catch(err => {
       logger.error('Async webhook error:', err);
     });
   }

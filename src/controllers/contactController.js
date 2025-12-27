@@ -27,12 +27,13 @@ class ContactController {
       
       try {
         // Vérifier si le numéro existe sur WhatsApp
-        const [result] = await sock.onWhatsApp(jid);
-        
+        const [whatsappResult] = await sock.onWhatsApp(jid);
+        const phoneExists = whatsappResult?.exists || false;
+
         res.json({
           success: true,
-          exists: result?.exists || false,
-          jid: result?.exists ? jid : null
+          exists: phoneExists,
+          jid: phoneExists ? jid : null
         });
       } catch (error) {
         res.json({

@@ -16,8 +16,15 @@ class WhatsAppService {
   
   /**
    * Crée ou récupère une connexion WhatsApp
+   * @param {Object} config - Configuration de la connexion
+   * @param {number} config.instanceId - ID de l'instance
+   * @param {string} config.instanceName - Nom de l'instance
+   * @param {string} config.webhookUrl - URL du webhook
+   * @param {string} config.apiKey - Clé API
+   * @param {Array<string>} [config.webhookEvents=[]] - Événements webhook
+   * @param {string} [config.webhookSecret=null] - Secret webhook
    */
-  async connect(instanceId, instanceName, webhookUrl, apiKey, webhookEvents = [], webhookSecret = null) {
+  async connect({ instanceId, instanceName, webhookUrl, apiKey, webhookEvents = [], webhookSecret = null }) {
     // Vérifier le lock (une seule connexion active par instance)
     const isLocked = await ConnectionLockService.isLocked(instanceName);
     if (isLocked && !this.connections.has(instanceName)) {
@@ -112,143 +119,166 @@ class WhatsAppService {
   async handleConnectionUpdate(connection, update) {
     const { connection: connStatus, lastDisconnect, qr } = update;
     
-    // QR Code généré
     if (qr) {
-      connection.qr = qr;
-      connection.status = 'qr_ready';
-      
-      try {
-        const qrImage = await generateQRImage(qr);
-        const qrExpiresAt = new Date(Date.now() + 60000); // 60 secondes
-        
-        await Instance.update(connection.instanceId, {
-          status: 'qr_ready',
-          qr_code: qrImage,
-          qr_expires_at: qrExpiresAt
-        });
-        
-        // Webhook QR généré
-        await WebhookService.sendAsync(
-          connection.instanceId,
-          connection.webhookUrl,
-          'qr.generated',
-          {
-            instance: connection.instanceName,
-            apiKey: connection.apiKey,
-            qr,
-            qrImage,
-            expiresAt: qrExpiresAt.toISOString()
-          },
-          connection.webhookEvents,
-          connection.webhookSecret
-        );
-        
-        logger.info(`[${connection.instanceName}] QR code generated`);
-      } catch (error) {
-        logger.error(`[${connection.instanceName}] Error handling QR:`, error);
-      }
+      await this.handleQRGenerated(connection, qr);
     }
     
-    // Connexion ouverte
     if (connStatus === 'open') {
-      connection.status = 'connected';
-      connection.reconnectAttempts = 0;
-      
-      const user = connection.sock.user;
-      const phoneNumber = user.id.split(':')[0];
-      const phoneName = user.name || user.notify || phoneNumber;
-      
-      try {
-        await Instance.update(connection.instanceId, {
-          status: 'connected',
-          phone_number: phoneNumber,
-          phone_name: phoneName,
-          qr_code: null,
-          qr_expires_at: null,
-          connected_at: new Date(),
-          platform: user.platform || 'unknown'
-        });
-        
-        // Webhook connexion réussie
-        await WebhookService.sendAsync(
-          connection.instanceId,
-          connection.webhookUrl,
-          'connection.connected',
-          {
-            instance: connection.instanceName,
-            apiKey: connection.apiKey,
-            phoneNumber,
-            phoneName,
-            platform: user.platform
-          },
-          connection.webhookEvents,
-          connection.webhookSecret
-        );
-        
-        logger.info(`[${connection.instanceName}] Connected: ${phoneNumber}`);
-      } catch (error) {
-        logger.error(`[${connection.instanceName}] Error handling connection:`, error);
-      }
+      await this.handleConnectionOpen(connection);
     }
     
-    // Connexion fermée
     if (connStatus === 'close') {
-      connection.status = 'disconnected';
-      
-      const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-      const reason = lastDisconnect?.error?.message || 'Unknown';
-      
-      try {
-        await Instance.update(connection.instanceId, {
-          status: 'disconnected',
-          disconnected_at: new Date(),
-          disconnect_reason: reason
-        });
-        
-        // Webhook déconnexion
-        await WebhookService.sendAsync(
-          connection.instanceId,
-          connection.webhookUrl,
-          'connection.disconnected',
-          {
-            instance: connection.instanceName,
-            apiKey: connection.apiKey,
-            reason,
-            shouldReconnect
-          },
-          connection.webhookEvents
-        );
-        
-        logger.warn(`[${connection.instanceName}] Disconnected: ${reason}`);
-        
-        // Tentative de reconnexion automatique
-        if (shouldReconnect && connection.reconnectAttempts < config.baileys.maxReconnectionAttempts) {
-          connection.reconnectAttempts++;
-          const delay = Math.min(5000 * connection.reconnectAttempts, 30000);
-          
-          logger.info(`[${connection.instanceName}] Reconnecting in ${delay}ms (attempt ${connection.reconnectAttempts})`);
-          
-          setTimeout(async () => {
-            try {
-              await this.connect(
-                connection.instanceId,
-                connection.instanceName,
-                connection.webhookUrl,
-                connection.apiKey,
-                connection.webhookEvents
-              );
-            } catch (error) {
-              logger.error(`[${connection.instanceName}] Reconnection failed:`, error);
-            }
-          }, delay);
-        } else {
-          // Supprimer la connexion si on ne peut plus se reconnecter
-          this.connections.delete(connection.instanceName);
-        }
-      } catch (error) {
-        logger.error(`[${connection.instanceName}] Error handling disconnection:`, error);
-      }
+      await this.handleConnectionClose(connection, lastDisconnect);
     }
+  }
+
+  /**
+   * Gère la génération d'un QR code
+   */
+  async handleQRGenerated(connection, qr) {
+    connection.qr = qr;
+    connection.status = 'qr_ready';
+    
+    try {
+      const qrImage = await generateQRImage(qr);
+      const qrExpiresAt = new Date(Date.now() + 60000);
+      
+      await Instance.update(connection.instanceId, {
+        status: 'qr_ready',
+        qr_code: qrImage,
+        qr_expires_at: qrExpiresAt
+      });
+      
+      await WebhookService.sendAsync(
+        connection.instanceId,
+        connection.webhookUrl,
+        'qr.generated',
+        {
+          instance: connection.instanceName,
+          apiKey: connection.apiKey,
+          qr,
+          qrImage,
+          expiresAt: qrExpiresAt.toISOString()
+        },
+        connection.webhookEvents,
+        connection.webhookSecret
+      );
+      
+      logger.info(`[${connection.instanceName}] QR code generated`);
+    } catch (error) {
+      logger.error(`[${connection.instanceName}] Error handling QR:`, error);
+    }
+  }
+
+  /**
+   * Gère l'ouverture de la connexion
+   */
+  async handleConnectionOpen(connection) {
+    connection.status = 'connected';
+    connection.reconnectAttempts = 0;
+    
+    const user = connection.sock.user;
+    const phoneNumber = user.id.split(':')[0];
+    const phoneName = user.name || user.notify || phoneNumber;
+    
+    try {
+      await Instance.update(connection.instanceId, {
+        status: 'connected',
+        phone_number: phoneNumber,
+        phone_name: phoneName,
+        qr_code: null,
+        qr_expires_at: null,
+        connected_at: new Date(),
+        platform: user.platform || 'unknown'
+      });
+      
+      await WebhookService.sendAsync(
+        connection.instanceId,
+        connection.webhookUrl,
+        'connection.connected',
+        {
+          instance: connection.instanceName,
+          apiKey: connection.apiKey,
+          phoneNumber,
+          phoneName,
+          platform: user.platform
+        },
+        connection.webhookEvents,
+        connection.webhookSecret
+      );
+      
+      logger.info(`[${connection.instanceName}] Connected: ${phoneNumber}`);
+    } catch (error) {
+      logger.error(`[${connection.instanceName}] Error handling connection:`, error);
+    }
+  }
+
+  /**
+   * Gère la fermeture de la connexion
+   */
+  async handleConnectionClose(connection, lastDisconnect) {
+    connection.status = 'disconnected';
+
+    const disconnectStatusCode = lastDisconnect?.error?.output?.statusCode;
+    const isLoggedOut = disconnectStatusCode === DisconnectReason.loggedOut;
+    const shouldReconnect = !isLoggedOut;
+    const reason = lastDisconnect?.error?.message || 'Unknown';
+    
+    try {
+      await Instance.update(connection.instanceId, {
+        status: 'disconnected',
+        disconnected_at: new Date(),
+        disconnect_reason: reason
+      });
+      
+      await WebhookService.sendAsync(
+        connection.instanceId,
+        connection.webhookUrl,
+        'connection.disconnected',
+        {
+          instance: connection.instanceName,
+          apiKey: connection.apiKey,
+          reason,
+          shouldReconnect
+        },
+        connection.webhookEvents
+      );
+      
+      logger.warn(`[${connection.instanceName}] Disconnected: ${reason}`);
+      
+      if (shouldReconnect && connection.reconnectAttempts < config.baileys.maxReconnectionAttempts) {
+        await this.scheduleReconnection(connection);
+      } else {
+        this.connections.delete(connection.instanceName);
+      }
+    } catch (error) {
+      logger.error(`[${connection.instanceName}] Error handling disconnection:`, error);
+    }
+  }
+
+  /**
+   * Planifie une tentative de reconnexion
+   */
+  async scheduleReconnection(connection) {
+    connection.reconnectAttempts++;
+    const delay = Math.min(5000 * connection.reconnectAttempts, 30000);
+    
+    logger.info(`[${connection.instanceName}] Reconnecting in ${delay}ms (attempt ${connection.reconnectAttempts})`);
+    
+    setTimeout(async () => {
+      try {
+        await this.connect({
+          instanceId: connection.instanceId,
+          instanceName: connection.instanceName,
+          webhookUrl: connection.webhookUrl,
+          apiKey: connection.apiKey,
+          webhookEvents: connection.webhookEvents,
+          webhookSecret: connection.webhookSecret
+        });
+      } catch (error) {
+        logger.error(`[${connection.instanceName}] Reconnection failed:`, error);
+      }
+    }, delay);
   }
   
   /**

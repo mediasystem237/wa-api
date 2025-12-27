@@ -1,4 +1,4 @@
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 
 /**
  * Format d'erreur standard pour toutes les réponses d'erreur
@@ -8,7 +8,7 @@ class ErrorFormatter {
    * Génère un format d'erreur standardisé
    */
   static format(error, req = null, details = null) {
-    const requestId = req ? (req.id || uuidv4()) : uuidv4();
+    const requestId = req ? (req.id || crypto.randomUUID()) : crypto.randomUUID();
     
     // Si l'erreur a déjà le bon format, la retourner
     if (error.error && error.code && error.request_id) {

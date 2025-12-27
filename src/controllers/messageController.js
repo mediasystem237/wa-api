@@ -24,7 +24,7 @@ class MessageController {
   static async sendVideo(req, res, next) {
     try {
       const { to, videoUrl, caption, filename, gifPlayback } = req.body;
-      const result = await MessageService.sendVideo(req.instance.instance_name, to, videoUrl, caption, filename, gifPlayback);
+      const result = await MessageService.sendVideo(req.instance.instance_name, { to, videoUrl, caption, filename, gifPlayback });
       res.json(result);
     } catch (error) {
       next(error);
@@ -54,7 +54,7 @@ class MessageController {
   static async sendLocation(req, res, next) {
     try {
       const { to, latitude, longitude, name, address } = req.body;
-      const result = await MessageService.sendLocation(req.instance.instance_name, to, latitude, longitude, name, address);
+      const result = await MessageService.sendLocation(req.instance.instance_name, { to, latitude, longitude, name, address });
       res.json(result);
     } catch (error) {
       next(error);

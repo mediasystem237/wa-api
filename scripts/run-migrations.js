@@ -1,20 +1,21 @@
-const fs = require('fs');
+const fs = require('fs').promises;
 const path = require('path');
 const pool = require('../src/config/database');
 const logger = require('../src/utils/logger');
 
 async function runMigrations() {
   const migrationsDir = path.join(__dirname, '..', 'migrations');
-  const migrationFiles = fs.readdirSync(migrationsDir)
+  const migrationFiles = (await fs.readdir(migrationsDir))
     .filter(file => file.endsWith('.sql'))
     .sort();
-  
+
   logger.info(`Found ${migrationFiles.length} migration files`);
-  
+
+  // Les migrations DOIVENT être exécutées séquentiellement (ordre important)
   for (const file of migrationFiles) {
     const filePath = path.join(migrationsDir, file);
-    const sql = fs.readFileSync(filePath, 'utf8');
-    
+    const sql = await fs.readFile(filePath, 'utf8');
+
     logger.info(`Running migration: ${file}`);
     
     try {
@@ -29,7 +30,7 @@ async function runMigrations() {
       }
     }
   }
-  
+
   logger.info('All migrations completed');
   await pool.end();
   process.exit(0);

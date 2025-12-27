@@ -82,7 +82,7 @@ Crée une nouvelle instance WhatsApp.
   "instance": {
     "id": 1,
     "name": "my-whatsapp-bot",
-    "apiKey": "wapi_a1b2c3d4e5f6...",
+    "apiKey": "wapi_XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX",
     "webhookUrl": "https://example.com/webhook",
     "webhookEvents": ["message.received", "connection.connected"],
     "status": "created",

@@ -4,7 +4,9 @@ const InstanceController = require('../controllers/instanceController');
 const { authenticateApiKey } = require('../middleware/auth');
 const { instanceValidators } = require('../middleware/validator');
 
-// Créer une instance (public)
+// Créer une instance (route publique - authentification non requise)
+// Sécurité: Protégée par rate limiting (10 requêtes/heure par IP) et validation des données
+// Note: Cette route doit rester publique pour permettre la création d'instances
 router.post('/', instanceValidators.create, InstanceController.create);
 
 // Routes avec ID explicite
@@ -17,6 +19,7 @@ router.delete('/:id', authenticateApiKey, InstanceController.delete);
 router.patch('/:id/webhook', authenticateApiKey, instanceValidators.updateWebhook, InstanceController.updateWebhook);
 
 // Routes de compatibilité (dépréciées, utiliser les routes avec ID)
+// Sécurité: Route publique protégée par rate limiting (10 requêtes/heure par IP)
 router.post('/create', instanceValidators.create, InstanceController.create);
 router.post('/connect', authenticateApiKey, InstanceController.connect);
 router.get('/status', authenticateApiKey, InstanceController.getStatus);

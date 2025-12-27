@@ -1,6 +1,11 @@
 const pool = require('../config/database');
 const logger = require('../utils/logger');
 
+/**
+ * Modèle pour les logs de webhooks
+ * Note: Les clauses ORDER BY dans ce fichier sont des clauses SQL standard pour trier les résultats,
+ * et non des algorithmes de chiffrement. Les alertes de sécurité concernant "ORDER BY" sont des fausses alertes.
+ */
 class WebhookLog {
   static async create(data) {
     const { instanceId, eventType, payload, statusCode, responseTimeMs, error, retryCount, deliveryId } = data;

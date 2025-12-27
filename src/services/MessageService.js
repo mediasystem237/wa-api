@@ -97,8 +97,15 @@ class MessageService {
   
   /**
    * Envoie une vidéo
+   * @param {string} instanceName - Nom de l'instance
+   * @param {Object} config - Configuration de la vidéo
+   * @param {string} config.to - Numéro de téléphone destinataire
+   * @param {string} config.videoUrl - URL de la vidéo
+   * @param {string} [config.caption=''] - Légende de la vidéo
+   * @param {string} [config.filename=''] - Nom du fichier
+   * @param {boolean} [config.gifPlayback=false] - Si true, lecture comme GIF
    */
-  static async sendVideo(instanceName, to, videoUrl, caption = '', filename = '', gifPlayback = false) {
+  static async sendVideo(instanceName, { to, videoUrl, caption = '', filename = '', gifPlayback = false }) {
     const sock = whatsappService.getSocket(instanceName);
     if (!sock) {
       throw new Error('Instance not connected');
@@ -217,7 +224,7 @@ class MessageService {
   /**
    * Envoie une localisation
    */
-  static async sendLocation(instanceName, to, latitude, longitude, name = '', address = '') {
+  static async sendLocation(instanceName, { to, latitude, longitude, name = '', address = '' }) {
     const sock = whatsappService.getSocket(instanceName);
     if (!sock) {
       throw new Error('Instance not connected');
@@ -251,6 +258,27 @@ class MessageService {
   }
   
   /**
+   * Convertit un contact en format vCard
+   */
+  static convertContactToVCard(contact) {
+    let vcard = 'BEGIN:VCARD\n';
+    vcard += 'VERSION:3.0\n';
+    vcard += `FN:${contact.fullName}\n`;
+    vcard += `TEL;TYPE=CELL:${contact.phoneNumber}\n`;
+    
+    if (contact.organization) {
+      vcard += `ORG:${contact.organization}\n`;
+    }
+    
+    if (contact.email) {
+      vcard += `EMAIL:${contact.email}\n`;
+    }
+    
+    vcard += 'END:VCARD';
+    return vcard;
+  }
+
+  /**
    * Envoie un contact (vCard)
    */
   static async sendContact(instanceName, to, contacts) {
@@ -265,21 +293,7 @@ class MessageService {
     }
     
     try {
-      // Convertir les contacts en format vCard
-      const vcards = contacts.map(contact => {
-        let vcard = 'BEGIN:VCARD\n';
-        vcard += 'VERSION:3.0\n';
-        vcard += `FN:${contact.fullName}\n`;
-        vcard += `TEL;TYPE=CELL:${contact.phoneNumber}\n`;
-        if (contact.organization) {
-          vcard += `ORG:${contact.organization}\n`;
-        }
-        if (contact.email) {
-          vcard += `EMAIL:${contact.email}\n`;
-        }
-        vcard += 'END:VCARD';
-        return vcard;
-      });
+      const vcards = contacts.map(contact => this.convertContactToVCard(contact));
       
       const sent = await sock.sendMessage(jid, {
         contacts: {

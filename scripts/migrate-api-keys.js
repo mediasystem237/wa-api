@@ -9,27 +9,29 @@ const logger = require('../src/utils/logger');
 async function migrateApiKeys() {
   try {
     logger.info('Starting API keys migration...');
-    
+
     // Récupérer toutes les instances avec api_key en clair
-    const result = await pool.query(
+    const instancesQueryResult = await pool.query(
       'SELECT id, api_key FROM instances WHERE api_key IS NOT NULL AND api_key_hash IS NULL'
     );
-    
-    logger.info(`Found ${result.rows.length} instances to migrate`);
-    
+
+    logger.info(`Found ${instancesQueryResult.rows.length} instances to migrate`);
+
     let migrated = 0;
     let errors = 0;
-    
-    for (const instance of result.rows) {
+
+    // Exécution séquentielle pour éviter de surcharger la base de données
+    // Les UPDATE sont sur différentes lignes mais on garde un contrôle séquentiel
+    for (const instance of instancesQueryResult.rows) {
       try {
         const hash = ApiKeyService.hash(instance.api_key);
         const last4 = ApiKeyService.extractLast4(instance.api_key);
-        
+
         await pool.query(
           'UPDATE instances SET api_key_hash = $1, api_key_last4 = $2 WHERE id = $3',
           [hash, last4, instance.id]
         );
-        
+
         migrated++;
         logger.debug(`Migrated instance ${instance.id}`);
       } catch (error) {
@@ -37,13 +39,13 @@ async function migrateApiKeys() {
         logger.error(`Error migrating instance ${instance.id}:`, error);
       }
     }
-    
+
     logger.info(`Migration completed: ${migrated} migrated, ${errors} errors`);
-    
+
     // Optionnel: Supprimer la colonne api_key après vérification
     // ATTENTION: Ne décommenter que si vous êtes sûr que tous les hash sont corrects
     // await pool.query('ALTER TABLE instances DROP COLUMN api_key');
-    
+
   } catch (error) {
     logger.error('Migration failed:', error);
     throw error;
