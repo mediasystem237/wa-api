@@ -15,14 +15,26 @@ function requestIdMiddleware(req, res, next) {
  * Middleware de gestion des erreurs avec format standardisé
  */
 function errorHandler(err, req, res, next) {
-  logger.error('Error:', {
+  logger.error({
     request_id: req.id,
     message: err.message,
     stack: err.stack,
     path: req.path,
     method: req.method,
+    origin: req.headers.origin,
     status: err.status || 500
-  });
+  }, 'Error occurred');
+  
+  // Erreur CORS
+  if (err.message && err.message.includes('Not allowed by CORS')) {
+    return res.status(403).json(
+      ErrorFormatter.format({
+        code: 'CORS_ERROR',
+        message: 'Not allowed by CORS',
+        status: 403
+      }, req)
+    );
+  }
   
   // Erreur de validation
   if (err.name === 'ValidationError') {

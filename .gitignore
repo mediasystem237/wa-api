@@ -47,5 +47,7 @@ temp/
 *.tmp
 
 archive/
+white-label/
 
-
+DEPLOY_NPM.md
+WHITE_LABEL_SETUP.md

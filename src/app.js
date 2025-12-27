@@ -66,7 +66,10 @@ const corsOptions = {
     if (allAllowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      logger.warn(`CORS blocked origin: ${origin}, allowed: ${allAllowedOrigins.join(', ')}`);
+      logger.warn({
+        origin: origin,
+        allowedOrigins: allAllowedOrigins.join(', ')
+      }, 'CORS blocked origin');
       callback(new Error('Not allowed by CORS'));
     }
   },
