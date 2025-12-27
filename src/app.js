@@ -43,17 +43,28 @@ app.get('/health', (req, res) => {
 // CORS configuré (pas de wildcard en prod)
 const corsOptions = {
   origin: function (origin, callback) {
+    // Autoriser les requêtes sans origin (même origine que le serveur - accès direct)
+    // Cela permet d'accéder à /api-docs depuis le domaine de l'API lui-même
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // En développement, autoriser toutes les origines
+    if (config.nodeEnv === 'development') {
+      return callback(null, true);
+    }
+    
+    // En production, construire la liste des origines autorisées
+    const apiDomain = `https://${config.domain}`;
     const allowedOrigins = process.env.CORS_ORIGINS 
       ? process.env.CORS_ORIGINS.split(',').map(o => o.trim())
       : [];
     
-    // En développement, autoriser les requêtes sans origin
-    if (config.nodeEnv === 'development' && !origin) {
-      return callback(null, true);
-    }
+    // Toujours autoriser le domaine de l'API lui-même
+    const allAllowedOrigins = [apiDomain, ...allowedOrigins];
     
-    // En production, vérifier l'origin
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+    // Vérifier si l'origin est autorisé
+    if (allAllowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));
