@@ -24,8 +24,6 @@ const app = express();
 
 // Middleware de sécurité
 app.use(requestIdMiddleware); // Générer request_id pour chaque requête
-app.use(helmet());
-app.use(compression());
 
 // Health check (avant CORS pour être accessible sans restrictions)
 app.get('/health', (req, res) => {
@@ -41,6 +39,7 @@ app.get('/health', (req, res) => {
 });
 
 // CORS configuré (pas de wildcard en prod)
+// Placé avant Helmet pour éviter les conflits
 const corsOptions = {
   origin: function (origin, callback) {
     // Autoriser les requêtes sans origin (même origine que le serveur - accès direct)
@@ -67,14 +66,31 @@ const corsOptions = {
     if (allAllowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
+      logger.warn(`CORS blocked origin: ${origin}, allowed: ${allAllowedOrigins.join(', ')}`);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Admin-Key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-API-Key', 'X-Admin-Key'],
+  exposedHeaders: ['X-Request-ID'],
+  optionsSuccessStatus: 200 // Pour les navigateurs legacy
 };
 app.use(cors(corsOptions));
+
+// Configurer Helmet pour ne pas bloquer CORS
+const helmetOptions = {
+  crossOriginEmbedderPolicy: false,
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'", "'unsafe-inline'"],
+    },
+  },
+};
+app.use(helmet(helmetOptions));
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
